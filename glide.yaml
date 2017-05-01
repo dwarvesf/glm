@@ -1,0 +1,3 @@
+package: git.dwarvesf.com/quang/gitlab
+import:
+- package: github.com/xanzy/go-gitlab

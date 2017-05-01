@@ -1,0 +1,8 @@
+# goreleaser.yml
+# Build customization
+build:
+  binary: glmarathon
+  goos:
+    - linux
+  goarch:
+    - amd64
