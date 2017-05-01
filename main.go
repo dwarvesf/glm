@@ -23,9 +23,13 @@ var (
 	marathonFile       = kingpin.Flag("marathon-file", "Marathon template file").Short('m').Default("./marathon/marathon.json").String()
 	marathonTargetFile = kingpin.Flag("marathon-target-file", "Marathon target file to deploy").Short('t').Default("./target.json").String()
 	ignoreBuildVars    = kingpin.Flag("ignore-build-vars", "Build vars which be ignored").Short('v').
-				Default("MARATHON_HOST", "CI_BUILD_DOCKER_HUB_PASSWORD", "CI_BUILD_DOCKER_HUB_USERNAME", "CONN").
+				Default("MARATHON_HOST", "CI_BUILD_DOCKER_HUB_PASSWORD", "CI_BUILD_DOCKER_HUB_USERNAME", "CONN", "GITLAB_PRIVATE_TOKEN").
 				Strings()
-	image = kingpin.Flag("image", "Docker image name to build").Short('i').String()
+	additionalBuildVars = kingpin.Flag("additional-build-vars", "Additional Build vars which be added to build image").Short('d').
+				Default("CI_JOB_ID").
+				Strings()
+	image           = kingpin.Flag("image", "Docker image name to build").Short('i').String()
+	gitlabPrivToken = kingpin.Flag("gitlab-private-token", "Gitlab private token to get repo's information from Gitlab").Short('p').String()
 )
 
 func main() {
@@ -35,9 +39,13 @@ func main() {
 		logrus.Fatal("baseURL cannot be empty")
 	}
 
+	if *gitlabPrivToken == "" {
+		logrus.Fatal("Gitlab private token cannot be empty")
+	}
+
 	var err error
 	// init git client
-	git = gitlab.NewClient(nil, os.Getenv("GITLAB_PRIVATE_TOKEN"))
+	git = gitlab.NewClient(nil, *gitlabPrivToken)
 	git.SetBaseURL(*baseURL)
 	optFunc := gitlab.WithSudo(*userRole)
 
@@ -86,7 +94,6 @@ func buildWeb(vars []*gitlab.BuildVariable) (err error) {
 		if utils.IsInSliceString(*ignoreBuildVars, v.Key) {
 			continue
 		}
-		os.Setenv(v.Key, v.Value)
 		args = append(args, fmt.Sprintf("--build-arg %v=$%v", v.Key, v.Key))
 	}
 
@@ -119,16 +126,19 @@ func genMarathonFile(vars []*gitlab.BuildVariable) (err error) {
 	var args, envstr string
 	var envs []string
 
-	// args += "--arg build_id $CI_JOB_ID "
-	// envs = append(envs, ".env.BUILD_ID |= $build_id")
-	// os.Setenv("CI_JOB_ID", time.Now().String())
 	for _, v := range vars {
 		if utils.IsInSliceString(*ignoreBuildVars, v.Key) {
 			continue
 		}
 		args += fmt.Sprintf("--arg %v $%v ", strings.ToLower(v.Key), v.Key)
 		envs = append(envs, fmt.Sprintf(".env.%v |= $%v", v.Key, strings.ToLower(v.Key)))
-		os.Setenv(v.Key, v.Value)
+	}
+	for _, v := range *additionalBuildVars {
+		if utils.IsInSliceString(*ignoreBuildVars, v) {
+			continue
+		}
+		args += fmt.Sprintf("--arg %v $%v ", strings.ToLower(v), v)
+		envs = append(envs, fmt.Sprintf(".env.%v |= $%v", v, strings.ToLower(v)))
 	}
 	envstr = strings.Join(envs, " | ")
 
