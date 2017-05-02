@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,9 +15,8 @@ import (
 )
 
 var (
-	git *gitlab.Client
-	// configFile = kingpin.Flag("config-file", "Path to config file").Short('c').Default("").String()
-	action             = kingpin.Flag("action", "action to deploy").Short('a').Default("").String()
+	git                *gitlab.Client
+	action             = kingpin.Flag("action", "action to deploy: gen-env-file, gen-marathon-file, build-web (beta)").Short('a').Default("").String()
 	projectID          = kingpin.Flag("project-id", "Project ID").Int()
 	baseURL            = kingpin.Flag("base-url", "Gitlab base URL API").Short('b').String()
 	userRole           = kingpin.Flag("user-role", "User's role").Short('u').Default("root").String()
@@ -94,10 +94,11 @@ func buildWeb(vars []*gitlab.BuildVariable) (err error) {
 		if utils.IsInSliceString(*ignoreBuildVars, v.Key) {
 			continue
 		}
-		args = append(args, fmt.Sprintf("--build-arg %v=$%v", v.Key, v.Key))
+		os.Setenv(v.Key, v.Value)
+		args = append(args, fmt.Sprintf("--build-arg %v=%v", v.Key, v.Value))
 	}
 
-	cmd := fmt.Sprintf("docker build %v -t %v .", strings.Join(args, " "), *image)
+	cmd := fmt.Sprintf("#!/bin/bash\nset -x\ndocker build %v -t %v .", strings.Join(args, " "), *image)
 	scriptPath := "./script.sh"
 	err = utils.WriteFile(scriptPath, cmd)
 	if err != nil {
@@ -107,6 +108,19 @@ func buildWeb(vars []*gitlab.BuildVariable) (err error) {
 	// run sh file to gen target.json
 	logrus.Infof("Building image %v ...", *image)
 	command := exec.Command("/bin/sh", scriptPath)
+	cmdReader, err := command.StdoutPipe()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error creating StdoutPipe for Cmd", err)
+		os.Exit(1)
+	}
+
+	scanner := bufio.NewScanner(cmdReader)
+	go func() {
+		for scanner.Scan() {
+			fmt.Printf("%s\n", scanner.Text())
+		}
+	}()
+
 	err = command.Start()
 	if err != nil {
 		logrus.WithError(err).Error("Cannot start cmd")

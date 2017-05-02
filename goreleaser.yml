@@ -4,5 +4,6 @@ build:
   binary: glm
   goos:
     - linux
+    - darwin
   goarch:
     - amd64
