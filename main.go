@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/dwarvesf/gitlab/utils"
+	"github.com/dwarvesf/glm/utils"
 
 	"github.com/Sirupsen/logrus"
 	gitlab "github.com/xanzy/go-gitlab"
