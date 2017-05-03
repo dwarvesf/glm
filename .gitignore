@@ -56,4 +56,5 @@ Temporary Items
 vendor/
 script.sh
 target.json
+env.env
 dist/

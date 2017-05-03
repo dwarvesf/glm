@@ -3,6 +3,8 @@ package utils
 import (
 	"os"
 
+	"strconv"
+
 	"github.com/Sirupsen/logrus"
 	gitlab "github.com/xanzy/go-gitlab"
 )
@@ -39,6 +41,24 @@ func WriteFile(filePath, content string) (err error) {
 // GetBuildVars get build vars from gitlab's project w given projectID
 func GetBuildVars(git *gitlab.Client, pid interface{}, opts *gitlab.ListBuildVariablesOptions, options gitlab.OptionFunc) (vars []*gitlab.BuildVariable, err error) {
 	logrus.Info("Getting build vars from project ...")
-	vars, _, err = git.BuildVariables.ListBuildVariables(pid, opts, options)
+	vars, resp, err := git.BuildVariables.ListBuildVariables(pid, opts, options)
+	total, _ := strconv.Atoi(resp.Header.Get("X-Total"))
+	if total > len(vars) {
+		opts.PerPage = total
+		vars, _, err = git.BuildVariables.ListBuildVariables(pid, opts, options)
+	}
 	return
+}
+
+// RemoveListIgnoredBuildVars remove unecessary build vars
+func RemoveListIgnoredBuildVars(vars []*gitlab.BuildVariable, ignoredBuildVars []string) []*gitlab.BuildVariable {
+	for i := range ignoredBuildVars {
+		for j := range vars {
+			if ignoredBuildVars[i] == vars[j].Key {
+				vars = append(vars[:j], vars[j+1:]...)
+				break
+			}
+		}
+	}
+	return vars
 }

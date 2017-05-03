@@ -23,13 +23,14 @@ var (
 	marathonFile       = kingpin.Flag("marathon-file", "Marathon template file").Short('m').Default("./marathon/marathon.json").String()
 	marathonTargetFile = kingpin.Flag("marathon-target-file", "Marathon target file to deploy").Short('t').Default("./target.json").String()
 	ignoreBuildVars    = kingpin.Flag("ignore-build-vars", "Build vars which be ignored").Short('v').
-				Default("MARATHON_HOST", "CI_BUILD_DOCKER_HUB_PASSWORD", "CI_BUILD_DOCKER_HUB_USERNAME", "CONN", "GITLAB_PRIVATE_TOKEN").
+				Default("CONN").
 				Strings()
 	additionalBuildVars = kingpin.Flag("additional-build-vars", "Additional Build vars which be added to build image").Short('d').
 				Default("CI_JOB_ID").
 				Strings()
-	image           = kingpin.Flag("image", "Docker image name to build").Short('i').String()
-	gitlabPrivToken = kingpin.Flag("gitlab-private-token", "Gitlab private token to get repo's information from Gitlab").Short('p').String()
+	image                  = kingpin.Flag("image", "Docker image name to build").Short('i').String()
+	gitlabPrivToken        = kingpin.Flag("gitlab-private-token", "Gitlab private token to get repo's information from Gitlab").Short('p').String()
+	defaultIgnoreBuildVars = []string{"MARATHON_HOST", "CI_BUILD_DOCKER_HUB_PASSWORD", "CI_BUILD_DOCKER_HUB_USERNAME", "GITLAB_PRIVATE_TOKEN"}
 )
 
 func main() {
@@ -49,10 +50,16 @@ func main() {
 	git.SetBaseURL(*baseURL)
 	optFunc := gitlab.WithSudo(*userRole)
 
-	vars, err := utils.GetBuildVars(git, *projectID, nil, optFunc)
+	// get vars from gitlab
+	listBuildVarsOpt := &gitlab.ListBuildVariablesOptions{}
+	vars, err := utils.GetBuildVars(git, *projectID, listBuildVarsOpt, optFunc)
 	if err != nil {
 		logrus.WithError(err).Fatal("Cannot get build vars")
 	}
+
+	// remove ignoredBuildVars when get vars from gitlab
+	*ignoreBuildVars = append(*ignoreBuildVars, defaultIgnoreBuildVars...)
+	vars = utils.RemoveListIgnoredBuildVars(vars, *ignoreBuildVars)
 
 	switch *action {
 	case "gen-env-file":
@@ -77,23 +84,15 @@ func main() {
 func genEnvFile(vars []*gitlab.BuildVariable) (err error) {
 	var envs string
 	for _, v := range vars {
-		if utils.IsInSliceString(*ignoreBuildVars, v.Key) {
-			continue
-		}
 		envs += fmt.Sprintf("%v=%v\n", v.Key, v.Value)
-		os.Setenv(v.Key, v.Value)
 	}
 
-	err = utils.WriteFile("./env.env", envs)
-	return
+	return utils.WriteFile("./env.env", envs)
 }
 
 func buildWeb(vars []*gitlab.BuildVariable) (err error) {
 	var args []string
 	for _, v := range vars {
-		if utils.IsInSliceString(*ignoreBuildVars, v.Key) {
-			continue
-		}
 		args = append(args, fmt.Sprintf("--build-arg %v=$%v", v.Key, v.Key))
 	}
 
@@ -142,16 +141,10 @@ func genMarathonFile(vars []*gitlab.BuildVariable) (err error) {
 	var envs []string
 
 	for _, v := range vars {
-		if utils.IsInSliceString(*ignoreBuildVars, v.Key) {
-			continue
-		}
 		args += fmt.Sprintf("--arg %v $%v ", strings.ToLower(v.Key), v.Key)
 		envs = append(envs, fmt.Sprintf(".env.%v |= $%v", v.Key, strings.ToLower(v.Key)))
 	}
 	for _, v := range *additionalBuildVars {
-		if utils.IsInSliceString(*ignoreBuildVars, v) {
-			continue
-		}
 		args += fmt.Sprintf("--arg %v $%v ", strings.ToLower(v), v)
 		envs = append(envs, fmt.Sprintf(".env.%v |= $%v", v, strings.ToLower(v)))
 	}
@@ -168,6 +161,5 @@ func genMarathonFile(vars []*gitlab.BuildVariable) (err error) {
 	// run sh file to gen target.json
 	logrus.Infof("Running %v ...", scriptPath)
 	command := exec.Command("/bin/sh", scriptPath)
-	err = command.Start()
-	return
+	return command.Start()
 }
