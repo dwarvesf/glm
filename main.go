@@ -94,11 +94,12 @@ func buildWeb(vars []*gitlab.BuildVariable) (err error) {
 		if utils.IsInSliceString(*ignoreBuildVars, v.Key) {
 			continue
 		}
-		os.Setenv(v.Key, v.Value)
-		args = append(args, fmt.Sprintf("--build-arg %v=%v", v.Key, v.Value))
+		args = append(args, fmt.Sprintf("--build-arg %v=$%v", v.Key, v.Key))
 	}
 
-	cmd := fmt.Sprintf("#!/bin/bash\nset -x\ndocker build %v -t %v .", strings.Join(args, " "), *image)
+	buildCmd := fmt.Sprintf("docker build %v -t %v .", strings.Join(args, " "), *image)
+	logrus.Info(buildCmd)
+	cmd := fmt.Sprintf("#!/bin/bash\nset -x\n%v", buildCmd)
 	scriptPath := "./script.sh"
 	err = utils.WriteFile(scriptPath, cmd)
 	if err != nil {
