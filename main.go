@@ -9,6 +9,8 @@ import (
 
 	"github.com/dwarvesf/glm/utils"
 
+	"time"
+
 	"github.com/Sirupsen/logrus"
 	gitlab "github.com/xanzy/go-gitlab"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
@@ -105,6 +107,8 @@ func buildWeb(vars []*gitlab.BuildVariable) (err error) {
 		return
 	}
 
+	time.Sleep(time.Second * 1)
+
 	// run sh file to gen target.json
 	logrus.Infof("Building image %v ...", *image)
 	command := exec.Command("/bin/sh", scriptPath)
@@ -141,6 +145,8 @@ func genMarathonFile(vars []*gitlab.BuildVariable) (err error) {
 	var envs []string
 
 	for _, v := range vars {
+		os.Setenv(v.Key, v.Value)
+		fmt.Println(fmt.Sprintf("export %v=%v", v.Key, v.Value))
 		args += fmt.Sprintf("--arg %v $%v ", strings.ToLower(v.Key), v.Key)
 		envs = append(envs, fmt.Sprintf(".env.%v |= $%v", v.Key, strings.ToLower(v.Key)))
 	}
@@ -158,8 +164,33 @@ func genMarathonFile(vars []*gitlab.BuildVariable) (err error) {
 		return
 	}
 
+	time.Sleep(time.Second * 1)
+
 	// run sh file to gen target.json
 	logrus.Infof("Running %v ...", scriptPath)
 	command := exec.Command("/bin/sh", scriptPath)
-	return command.Start()
+	cmdReader, err := command.StdoutPipe()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error creating StdoutPipe for Cmd", err)
+		os.Exit(1)
+	}
+
+	scanner := bufio.NewScanner(cmdReader)
+	go func() {
+		for scanner.Scan() {
+			fmt.Printf("%s\n", scanner.Text())
+		}
+	}()
+
+	err = command.Start()
+	if err != nil {
+		logrus.WithError(err).Error("Cannot start cmd")
+		return
+	}
+
+	err = command.Wait()
+	if err != nil {
+		logrus.WithError(err).Error("Cannot wait cmd")
+	}
+	return
 }
