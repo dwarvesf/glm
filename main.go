@@ -32,6 +32,7 @@ var (
 				Strings()
 	image                  = kingpin.Flag("image", "Docker image name to build").Short('i').String()
 	gitlabPrivToken        = kingpin.Flag("gitlab-private-token", "Gitlab private token to get repo's information from Gitlab").Short('p').String()
+	delayTime              = kingpin.Flag("delay-time", "Delay time (second) before run script.sh").Short('l').Int()
 	defaultIgnoreBuildVars = []string{"MARATHON_HOST", "CI_BUILD_DOCKER_HUB_PASSWORD", "CI_BUILD_DOCKER_HUB_USERNAME", "GITLAB_PRIVATE_TOKEN"}
 )
 
@@ -107,7 +108,7 @@ func buildWeb(vars []*gitlab.BuildVariable) (err error) {
 		return
 	}
 
-	time.Sleep(time.Second * 1)
+	time.Sleep(time.Second * time.Duration(*delayTime))
 
 	// run sh file to gen target.json
 	logrus.Infof("Building image %v ...", *image)
@@ -145,8 +146,6 @@ func genMarathonFile(vars []*gitlab.BuildVariable) (err error) {
 	var envs []string
 
 	for _, v := range vars {
-		os.Setenv(v.Key, v.Value)
-		fmt.Println(fmt.Sprintf("export %v=%v", v.Key, v.Value))
 		args += fmt.Sprintf("--arg %v $%v ", strings.ToLower(v.Key), v.Key)
 		envs = append(envs, fmt.Sprintf(".env.%v |= $%v", v.Key, strings.ToLower(v.Key)))
 	}
