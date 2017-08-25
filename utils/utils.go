@@ -42,6 +42,9 @@ func WriteFile(filePath, content string) (err error) {
 func GetBuildVars(git *gitlab.Client, pid interface{}, opts *gitlab.ListBuildVariablesOptions, options gitlab.OptionFunc) (vars []*gitlab.BuildVariable, err error) {
 	logrus.Info("Getting build vars from project ...")
 	vars, resp, err := git.BuildVariables.ListBuildVariables(pid, opts, options)
+	if err != nil {
+		return
+	}
 	total, _ := strconv.Atoi(resp.Header.Get("X-Total"))
 	if total > len(vars) {
 		opts.PerPage = total
